@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 
-# a helper script to pull the latest code from github and run w-n-p
+# A helper script to pull the latest code from GitHub and run w-n-p
 
-if ! command -v docker-compose &> /dev/null; then
-  echo "Error: docker-compose command not found. Please install Docker Compose."
+# Determine whether to use 'docker-compose' or 'docker compose'
+if command -v docker-compose &> /dev/null; then
+  DOCKER_COMPOSE="docker-compose"
+elif command -v docker &> /dev/null && docker compose version &> /dev/null; then
+  DOCKER_COMPOSE="docker compose"\else
+  echo "Error: Neither 'docker-compose' nor 'docker compose' is available. Please install Docker Compose."
+  exit 1
 fi
-  
-# build updated container from github
-docker-compose build --no-cache
 
-# stop the service (if running) and restart the service
-docker-compose down
-docker-compose up -d
+# Build updated container from GitHub
+$DOCKER_COMPOSE build --no-cache
 
-echo "Clean up dangling images with docker-compose image prune"
-# docker-compose image prune -f
+# Stop the service (if running) and restart the service
+$DOCKER_COMPOSE down
+$DOCKER_COMPOSE up -d
+
+echo "Clean up dangling images with $DOCKER_COMPOSE image prune"
+# $DOCKER_COMPOSE image prune -f
