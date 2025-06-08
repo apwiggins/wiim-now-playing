@@ -7,6 +7,8 @@
 const express = require("express");
 const cors = require("cors");
 const app = express();
+const { version } = require('../package.json');
+
 
 // Node.js modules
 const http = require("http");
@@ -104,6 +106,9 @@ app.get("/tv", function (req, res) {
 });
 app.get("/debug", function (req, res) {
     res.sendFile(__dirname + "/public/debug.html");
+});
+app.get('/api/version', (req, res) => {
+  res.json({ version });
 });
 app.get("/res", function (req, res) {
     res.sendFile(__dirname + "/public/res.html");
