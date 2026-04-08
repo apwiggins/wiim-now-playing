@@ -1,0 +1,16 @@
+services:
+  app:
+    build:
+      context: .
+      target: test  # <--- This triggers the Test Stage
+      args:
+        - VERSION=1.2.3 # Pass your version tag here
+    restart: always
+    ports:
+      - "80:80"
+    environment:
+      - NODE_ENV=production
+    # In production, we typically do NOT mount the local source code volume
+    # because the code is already baked into the image in Stage 4.
+    volumes:
+      - ./data:/app/data # Only mount the persistent data folder

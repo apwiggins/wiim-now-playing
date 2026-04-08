@@ -43,7 +43,7 @@ WORKDIR /app
 
 COPY --from=builder /app /app
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
-RUN cd /app && rm Dockerfile docker-compose.yml docker-update.sh && rm -rf docs
+RUN cd /app && rm -rf docs
 
 ARG VERSION
 ENV VERSION=$VERSION

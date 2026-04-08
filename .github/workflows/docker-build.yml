@@ -1,0 +1,81 @@
+name: Build and Push Docker Image
+
+on:
+  # Automatic: Pushes to 'test' repository whenever main is updated
+  push:
+    branches:
+      - main
+
+  # Automated production push (via tags) is commented out below:
+  # push:
+  #   tags:
+  #     - 'v*'
+
+  # Manual: Allows you to trigger builds to either 'test' or 'production' via the UI
+  workflow_dispatch:
+    inputs:
+      target_repo:
+        description: "Target Docker Hub Repository"
+        required: true
+        default: "test"
+        type: choice
+        options:
+          - test
+          - production
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine Target Repository
+        id: target
+        run: |
+          # Default to the test repository
+          TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying-test"
+
+          # production override
+          # 1. manual selection of 'production'
+          if [[ "${{ github.event.inputs.target_repo }}" == "production" ]]; then
+            TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
+          fi
+
+          # 2. automated Tag detection for production
+          # if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+          #   TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
+          # fi
+
+          echo "image=$TARGET_IMAGE" >> $GITHUB_OUTPUT
+          echo "Targeting: $TARGET_IMAGE"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.target.outputs.image }}
+          tags: |
+            type=raw,value=latest
+            type=ref,event=tag
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
