@@ -35,19 +35,19 @@ jobs:
       - name: Set Variables
         id: vars
         run: |
-          # Default repo = test
+          # Determine repo
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying-test"
-
-          # Allow production ONLY for manual runs
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             if [[ "${{ github.event.inputs.target_repo }}" == "production" ]]; then
               REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
             fi
           fi
 
-          # Version logic
+          # Determine version
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VER="${{ github.event.inputs.version }}"
+          elif [[ "${GITHUB_REF}}" == refs/tags/* ]]; then
+            VER="${GITHUB_REF#refs/tags/}"  # extracts vx.y.z from refs/tags/vx.y.z
           else
             VER="latest"
           fi
