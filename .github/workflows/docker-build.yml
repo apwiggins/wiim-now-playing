@@ -2,16 +2,21 @@ name: Build and Push Docker Image
 
 on:
   push:
-    tags:
-      - 'v*'   # <-- triggers on git tags like v1.9
+    branches:
+      - main
+  # push:
+  #   tags:
+  #     - 'v*'
   workflow_dispatch:
     inputs:
       version:
         description: 'Version tag (e.g., v1.9)'
         required: true
+        default: 'v1.9'
       target_repo:
         description: 'Target Docker Hub Repository'
         required: true
+        default: 'test'
         type: choice
         options:
           - test
@@ -23,7 +28,6 @@ env:
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -31,20 +35,21 @@ jobs:
       - name: Set Variables
         id: vars
         run: |
-          # Determine the repo
+          # Default repo = test
           REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying-test"
+
+          # Allow production ONLY for manual runs
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             if [[ "${{ github.event.inputs.target_repo }}" == "production" ]]; then
               REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
             fi
           fi
 
-          # Determine version
+          # Version logic
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VER="${{ github.event.inputs.version }}"
           else
-            # extract tag name from github.ref
-            VER="${GITHUB_REF#refs/tags/}"
+            VER="latest"
           fi
 
           echo "repo=$REPO" >> $GITHUB_OUTPUT
@@ -62,7 +67,7 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Step 1: Build and Push AMD64
+      # Step 1: Build and Push AMD64 (+ latest-amd64)
       - name: Build AMD64
         uses: docker/build-push-action@v5
         with:
@@ -70,12 +75,10 @@ jobs:
           file: ./docker/Dockerfile
           platforms: linux/amd64
           push: true
-          tags: |
-            ${{ steps.vars.outputs.repo }}:${{ steps.vars.outputs.ver }}-amd64
-            ${{ steps.vars.outputs.repo }}:latest-amd64
+          tags: ${{ steps.vars.outputs.repo }}:${{ steps.vars.outputs.ver }}-amd64
           build-args: VERSION=${{ steps.vars.outputs.ver }}
 
-      # Step 2: Build and Push ARM64
+      # Step 2: Build and Push ARM64 (+ latest-arm64)
       - name: Build ARM64
         uses: docker/build-push-action@v5
         with:
@@ -88,7 +91,7 @@ jobs:
             ${{ steps.vars.outputs.repo }}:latest-arm64
           build-args: VERSION=${{ steps.vars.outputs.ver }}
 
-      # Step 3: Build Multi-Arch Manifest
+      # Step 3: Build Multi-Arch Manifest and Push
       - name: Build Multi-Arch Manifest
         uses: docker/build-push-action@v5
         with:
