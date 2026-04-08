@@ -1,24 +1,10 @@
-name: Promote to Production
-
-on:
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Version to promote (e.g. '1.2.3' or 'latest')"
-        required: true
-        default: "latest"
-
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-
 jobs:
   promote:
     runs-on: ubuntu-latest
 
-    environment: production  # optional but recommended for approval gating
+    environment: production  # optional approval gate
 
     steps:
-      # 1. Set variables
       - name: Set Variables
         id: vars
         run: |
@@ -30,18 +16,16 @@ jobs:
           echo "prod_repo=$PROD_REPO" >> $GITHUB_OUTPUT
           echo "ver=$VER" >> $GITHUB_OUTPUT
 
-      # 2. Enable buildx (required for imagetools)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # 3. Login to Docker Hub
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # 4. Promote ALL tags + manifests properly
+      # Promote ALL tags + manifests
       - name: Promote multi-arch images and tags
         run: |
           TEST=${{ steps.vars.outputs.test_repo }}
@@ -68,6 +52,11 @@ jobs:
           docker buildx imagetools create \
             --tag $PROD:latest \
             $TEST:$VER
+
+          # Latest AMD64
+          docker buildx imagetools create \
+            --tag $PROD:latest-amd64 \
+            $TEST:${VER}-amd64
 
           # Latest ARM64
           docker buildx imagetools create \
