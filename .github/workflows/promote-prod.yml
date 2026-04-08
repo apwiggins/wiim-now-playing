@@ -1,0 +1,77 @@
+name: Promote to Production
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to promote (e.g. '1.2.3' or 'latest')"
+        required: true
+        default: "latest"
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+
+    environment: production  # optional but recommended for approval gating
+
+    steps:
+      # 1. Set variables
+      - name: Set Variables
+        id: vars
+        run: |
+          TEST_REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying-test"
+          PROD_REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
+          VER="${{ github.event.inputs.version }}"
+
+          echo "test_repo=$TEST_REPO" >> $GITHUB_OUTPUT
+          echo "prod_repo=$PROD_REPO" >> $GITHUB_OUTPUT
+          echo "ver=$VER" >> $GITHUB_OUTPUT
+
+      # 2. Enable buildx (required for imagetools)
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # 3. Login to Docker Hub
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # 4. Promote ALL tags + manifests properly
+      - name: Promote multi-arch images and tags
+        run: |
+          TEST=${{ steps.vars.outputs.test_repo }}
+          PROD=${{ steps.vars.outputs.prod_repo }}
+          VER=${{ steps.vars.outputs.ver }}
+
+          echo "Promoting version: $VER"
+
+          # Main multi-arch tag
+          docker buildx imagetools create \
+            --tag $PROD:$VER \
+            $TEST:$VER
+
+          # Architecture-specific tags
+          docker buildx imagetools create \
+            --tag $PROD:${VER}-amd64 \
+            $TEST:${VER}-amd64
+
+          docker buildx imagetools create \
+            --tag $PROD:${VER}-arm64 \
+            $TEST:${VER}-arm64
+
+          # Latest (multi-arch)
+          docker buildx imagetools create \
+            --tag $PROD:latest \
+            $TEST:$VER
+
+          # Latest ARM64
+          docker buildx imagetools create \
+            --tag $PROD:latest-arm64 \
+            $TEST:${VER}-arm64
+
+          echo "Promotion complete"

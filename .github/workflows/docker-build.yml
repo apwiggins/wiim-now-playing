@@ -1,23 +1,22 @@
 name: Build and Push Docker Image
 
 on:
-  # Automatic: Pushes to 'test' repository whenever main is updated
   push:
     branches:
       - main
-
-  # Automated production push (via tags) is commented out below:
   # push:
   #   tags:
   #     - 'v*'
-
-  # Manual: Allows you to trigger builds to either 'test' or 'production' via the UI
   workflow_dispatch:
     inputs:
-      target_repo:
-        description: "Target Docker Hub Repository"
+      version:
+        description: 'Version tag (e.g., v1.9)'
         required: true
-        default: "test"
+        default: 'v1.9'
+      target_repo:
+        description: 'Target Docker Hub Repository'
+        required: true
+        default: 'test'
         type: choice
         options:
           - test
@@ -33,25 +32,28 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Determine Target Repository
-        id: target
+      - name: Set Variables
+        id: vars
         run: |
-          # Default to the test repository
-          TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying-test"
+          # Default repo = test
+          REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying-test"
 
-          # production override
-          # 1. manual selection of 'production'
-          if [[ "${{ github.event.inputs.target_repo }}" == "production" ]]; then
-            TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
+          # Allow production ONLY for manual runs
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "${{ github.event.inputs.target_repo }}" == "production" ]]; then
+              REPO="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
+            fi
           fi
 
-          # 2. automated Tag detection for production
-          # if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
-          #   TARGET_IMAGE="${{ secrets.DOCKERHUB_USERNAME }}/wiimnowplaying"
-          # fi
+          # Version logic
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            VER="${{ github.event.inputs.version }}"
+          else
+            VER="latest"
+          fi
 
-          echo "image=$TARGET_IMAGE" >> $GITHUB_OUTPUT
-          echo "Targeting: $TARGET_IMAGE"
+          echo "repo=$REPO" >> $GITHUB_OUTPUT
+          echo "ver=$VER" >> $GITHUB_OUTPUT
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -65,23 +67,39 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
+      # Step 1: Build and Push AMD64 (+ latest-amd64)
+      - name: Build AMD64
+        uses: docker/build-push-action@v5
         with:
-          images: ${{ steps.target.outputs.image }}
-          tags: |
-            type=raw,value=latest
-            type=ref,event=tag
+          context: ./docker
+          file: ./docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.vars.outputs.repo }}:${{ steps.vars.outputs.ver }}-amd64
+          build-args: VERSION=${{ steps.vars.outputs.ver }}
 
-      - name: Build and push multi-arch image
+      # Step 2: Build and Push ARM64 (+ latest-arm64)
+      - name: Build ARM64
+        uses: docker/build-push-action@v5
+        with:
+          context: ./docker
+          file: ./docker/Dockerfile
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ steps.vars.outputs.repo }}:${{ steps.vars.outputs.ver }}-arm64
+            ${{ steps.vars.outputs.repo }}:latest-arm64
+          build-args: VERSION=${{ steps.vars.outputs.ver }}
+
+      # Step 3: Build Multi-Arch Manifest and Push
+      - name: Build Multi-Arch Manifest
         uses: docker/build-push-action@v5
         with:
           context: ./docker
           file: ./docker/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=${{ github.ref_name }}-${{ github.sha }}
+          tags: |
+            ${{ steps.vars.outputs.repo }}:${{ steps.vars.outputs.ver }}
+            ${{ steps.vars.outputs.repo }}:latest
+          build-args: VERSION=${{ steps.vars.outputs.ver }}
